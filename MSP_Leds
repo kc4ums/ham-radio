@@ -1,1 +1,39 @@
-ffgdf
+//This is to test shiftout and 8 bit word
+
+int ENABLE =  8;  //G on TPIC6B595 Enable data registers on TPIC6B595
+int DATA = 2; //SER IN on TPIC6B595 - Serial Clock
+int CLOCK = 14; //SRCK on TPIC6B595 - Serial Input
+int LATCH = 11; //RCK on TPIC6B595 - Register Data
+
+
+int dataOut = 0;
+int index = 0;
+
+void setup()
+{
+  // put your setup code here, to run once:
+
+  pinMode(ENABLE, OUTPUT); 
+  pinMode(DATA, OUTPUT); 
+  pinMode(CLOCK, OUTPUT); 
+  pinMode(LATCH, OUTPUT); 
+
+}
+
+void loop()
+{
+
+  index = index +1;
+  dataOut=index;
+
+  delay(4); 
+  shiftOut(DATA, CLOCK, MSBFIRST, (dataOut));  // Shiftout 8 bits and strobe clock 
+
+  // Reset index to 0
+  if (index > 255){
+    index = 0;
+  }
+
+
+}
+
