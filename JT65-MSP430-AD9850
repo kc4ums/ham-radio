@@ -1,0 +1,138 @@
+// KC4UMS - Tim Gray - June 25,2014
+// JT65 message Audio transmission.  Not to be used over the air.  Connect output of DDS to sound card on
+// computer and use JT65-HF to decode.
+// Target MSP430f5529 (16MHZ)
+// References:
+// http://www.arrl.org/files/file/18JT65.pdf
+// http://energia.nu/Reference_Index.html
+// http://webshed.org/wiki/AD9850_Arduino
+//
+// From page 8 in  http://www.arrl.org/files/file/18JT65.pdf
+// 1270.5 + 2.6917 (N+2) m Hz, where N is
+// the integral symbol value, 0 ≤ N ≤ 63, and m assumes the values 1, 2, and 4 for JT65 sub-
+// modes A, B, and C.
+//
+//  To generate encoded message use the Fortran program
+// http://physics.princeton.edu/pulsar/K1JT/JT65code.tgz
+// Packed message, 6-bit symbols:  30  6 39 22 18 43 20 24 62  8 39  4
+// Channel symbols, including FEC:
+//    2 50  9 15  0 32 26 50 62 53 14 26 43 38 17 45  5 30 40 30 16
+//    36 53 25  1 17 20  7 16 11  4 11 61 44  5 33 19 22  8 28  2 43
+//    33 52 12 51  1 15 10  2 51 40 29 52 48 56 33 57 57 58 35 27  6
+// Decoded message: KC4UMS EM81HM   
+
+// DDS Clock rate on board
+#define DDS_CLOCK 125000000
+
+// Button on TI Launchpad
+#define BUTTON P1_1
+
+//Pin connections for AD9850 DDS 
+#define DATA P1_2   // D7
+#define CLOCK P1_3  // WCLK
+#define LOAD P1_4   // FQUP
+#define RESET P1_5  // RESET
+
+byte sync_index  = 0;               // Used to increment thru sync array
+byte message_index = 0;             // Used to increment thru the message array
+unsigned long tuning_word = 1000;   // Tuning word for the frequency
+
+// 126 Element array containing the sync/message locations
+boolean sync[126] = {  
+  1,0,0,1,1,0,0,0,1,1,1,1,1,1,0,1,0,1,0,0,0,1,0,1,1,0,0,1,0,0,0,1,1,1,0,0,1,1,1,1,0,1,1,0,1,1,1,1,0,0,0,1,1,0,1,0,1,0,1,1,0,0,1,1,0,1,0,1,0,1,0,0,1,0,0,0,0,0,0,1,1,0,0,0,0,0,0,0,1,1,0,1,0,0,1,0,1,1,0,1,0,1,0,1,0,0,1,1,0,0,1,0,0,1,0,0,0,0,1,1,1,1,1,1,1,1};
+
+
+// 63 Element message from the JT65code encoder (Fortran run on Linux machine to generate KC4UMS EM81HM   
+
+byte message[63] = {
+  2,50,9,15,0,32,26,50,62,53,14,26,43,38,17,45,5,30,40,30,16,36,53,25,1,17,20,7,16,11,4,11,61,44,5,33,19,22,8,28,2,43,33,52,12,51,1,15,10,2,51,40,29,52,48,56,33,57,57,58,35,27,6};
+
+
+// Run once
+void setup()
+{
+  // Set pin direction on MSP430
+  pinMode(CLOCK, INPUT);                                                  
+  pinMode(CLOCK, OUTPUT);
+  pinMode(LOAD, OUTPUT) ; 
+  pinMode(DATA, OUTPUT) ;
+  pinMode(RESET, OUTPUT);
+
+
+  // Reset DDS module                                                                        
+  digitalWrite(RESET, LOW); 
+  digitalWrite(CLOCK, LOW); 
+  digitalWrite(LOAD, LOW); 
+  digitalWrite(DATA, LOW);
+  digitalWrite(CLOCK, LOW); 
+  digitalWrite(LOAD, LOW);  
+  digitalWrite(RESET, LOW); 
+  delay(5); 
+  digitalWrite(RESET, HIGH); 
+  digitalWrite(RESET, LOW); 
+  delay(5);  
+  digitalWrite(CLOCK, LOW); 
+  delay(5); 
+  digitalWrite(CLOCK, HIGH);
+  delay(5); 
+  digitalWrite(CLOCK, LOW); 
+  delay(5); 
+  digitalWrite(DATA, LOW); 
+  digitalWrite(LOAD, LOW); 
+  delay(5); 
+  digitalWrite(LOAD, HIGH); 
+  delay(5); 
+  digitalWrite(LOAD, LOW);
+  // End of reset module
+
+}
+
+
+// Main Loop
+void loop()       
+{
+  if(digitalRead(BUTTON) == LOW){                                        // Wait for button press at the EVEN minute start.
+    sync_index = 0;
+    message_index=0;
+
+    while(sync_index < 126){                                             // Index thru the sync array 
+      if(sync[sync_index]==0)                                            // If the sync bit is a zero set the frequency to the message else set it to the sync frequency
+      { 
+        SetFrequency(1270.5 + (2.6917 * (message[message_index]+2)));    // Set the DDS to the message symbol (NOT THE COMPLETE EQUATION) frequency from page 8 http://physics.princeton.edu/pulsar/K1JT/JT65code.tgz
+        message_index++;                                                 // Increment message index
+      }
+      else 
+      {
+        SetFrequency(1270.5);                                            // else Set the DDS to the sync frequency
+      }
+      delay(372);                                                        // Delay of .372 milliseconds from page 7 Sync & Modulation http://physics.princeton.edu/pulsar/K1JT/JT65code.tgz
+      sync_index++;                                                      // Increment sync index
+    }
+  }
+  SetFrequency(0);                                                       //Message complete set frequency to 0
+}
+
+
+
+
+
+
+
+
+void SetFrequency(unsigned long frequency)                             // Function to set the frequency via serial to DDS module from http://webshed.org/wiki/AD9850_Arduino
+{ 
+  unsigned long tuning_word = (frequency * pow(2, 32)) / DDS_CLOCK;    
+  digitalWrite (LOAD, LOW);   
+  shiftOut(DATA, CLOCK, LSBFIRST, tuning_word); 
+  shiftOut(DATA, CLOCK, LSBFIRST, tuning_word >> 8); 
+  shiftOut(DATA, CLOCK, LSBFIRST, tuning_word >> 16); 
+  shiftOut(DATA, CLOCK, LSBFIRST, tuning_word >> 24); 
+  shiftOut(DATA, CLOCK, LSBFIRST, 0x0);  
+  digitalWrite (LOAD, HIGH);  
+}
+
+
+
+
+
+
